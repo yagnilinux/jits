@@ -1,0 +1,164 @@
+#!/bin/sh
+# just install that shit
+# repo layout: see docs
+# db:   <root>/var/db/jits/installed/<name>/{version,depends,manifest,etcsums}
+
+log() { printf '\033[1m-> %s\033[m %s\n' "$1" "$2"; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# curl verifies, wget fallback
+get() {
+    [ "$repo" ] || die "no repo (set JITS_REPO or /etc/jits/repo)"
+    case $repo in
+        http*) if command -v curl >/dev/null; then curl -fsSL -o "$2" "$repo/$1"
+               else wget -qO "$2" "$repo/$1"; fi ;;
+        *)     cp "${repo#file://}/$1" "$2" ;;
+    esac
+}
+
+sync() {
+    mkdir -p "$db/repo" && get index "$idx.tmp" && mv "$idx.tmp" "$idx" ||
+        die "can't fetch $repo/index"
+    log repo Synced
+}
+
+pkg() { grep "^$1 " "$idx"; }
+ver() { cat "$db/installed/$1/version" 2>/dev/null; }
+
+# deps first
+dep() {
+    case " $order " in *" $1 "*) return; esac
+    case " $stack " in *" $1 "*) die "dependency cycle:$stack $1"; esac
+    set -- "$1" $(pkg "$1")
+    [ "$2" ] || die "$1: not in repo"
+    stack="$stack $1"
+    for d in $(echo "${5:--}" | tr , ' '); do [ "$d" = - ] || dep "$d"; done
+    stack=${stack% $1}
+    order="$order $1"
+}
+
+# no escaping root
+check() {
+    tar tvzf "$1" | awk '
+        { p = $NF; if ($1 ~ /^l/) for (i = 1; i <= NF; i++) if ($i == "->") p = $(i-1)
+          sub(/^\.\//, "", p); sub(/\/$/, "", p); f[p] = 1; if ($1 ~ /^l/) l[p] = 1 }
+        END { for (p in f) {
+                if (p ~ /^\// || p ~ /(^|\/)\.\.(\/|$)/) exit 1
+                for (s in l) if (index(p, s "/") == 1) exit 1 } }' ||
+        die "$2: unsafe path in package"
+}
+
+inst() {
+    set -- "$1" $(pkg "$1")
+    s=$db/stage/$1 tgz=$db/cache/$1.tar.gz
+    rm -rf "$s" && mkdir -p "$s" || die "$1: can't stage"
+    check "$tgz" "$1"
+    tar xzf "$tgz" -C "$s" || die "$1: bad archive"
+    (cd "$s" && find . ! -type d | sed 's|^\./||' | sort) > "$s.new"
+    sort "$db/installed/$1/manifest" > "$s.old" 2>/dev/null
+
+    while read -r f; do
+        o=$(grep -Fxl "$f" "$db"/installed/*/manifest 2>/dev/null | grep -v "/$1/manifest")
+        [ "$o" ] && { o=${o%/manifest}; die "/$f is owned by ${o##*/}"; }
+        [ -e "$R/$f" ] || [ -h "$R/$f" ] || continue
+        grep -Fxq "$f" "$s.old" || die "/$f already exists"
+    done < "$s.new"
+
+    # keep edited /etc
+    (cd "$s" && grep '^etc/' "$s.new" | while read -r f; do sha256sum "$f"; done) > "$s.sums"
+    (cd "$s" && find . -type d) | while read -r d; do mkdir -p "$R/$d"; done
+    while read -r f; do
+        case $f in etc/*) [ -e "$R/$f" ] && ! (cd "$R" && sha256sum "$f") |
+            grep -Fxqf - "$db/installed/$1/etcsums" 2>/dev/null &&
+            { mv -f "$s/$f" "$R/$f.new"; log "$1" "Kept /$f, new copy is /$f.new"; continue; }
+        esac
+        mv -f "$s/$f" "$R/$f" || die "/$f: can't install"
+    done < "$s.new"
+    grep -Fvx -f "$s.new" "$s.old" | while read -r f; do unlink "$f"; done
+
+    d=$db/installed/$1 && mkdir -p "$d"
+    echo "$3" > "$d/version"
+    echo "${5:--}" | tr , '\n' | grep -vx - > "$d/depends"
+    mv "$s.new" "$d/manifest"
+    mv "$s.sums" "$d/etcsums"
+    rm -rf "$s" "$s.old" "$tgz"
+    log "$1" "Installed $3"
+}
+
+# prune empty dirs
+unlink() { (cd "$R" && rm -f "$1" && rmdir -p "${1%/*}") 2>/dev/null; }
+
+add() {
+    order= stack= todo=
+    for p; do dep "$p"; done
+    for p in $order; do
+        set -- $(pkg "$p")
+        if [ "$(ver "$p")" = "$2" ]; then
+            case " $want " in *" $p "*) log "$p" "Already installed ($2)"; esac
+        else
+            todo="$todo $p"
+        fi
+    done
+    [ "$todo" ] || return 0
+
+    mkdir -p "$db/cache"
+    for p in $todo; do
+        set -- $(pkg "$p")
+        get "$1@$2.tar.gz" "$db/cache/$1.tar.gz" &
+    done
+    wait
+    for p in $todo; do
+        set -- $(pkg "$p")
+        [ -s "$db/cache/$1.tar.gz" ] || die "$1: download failed"
+        [ "$3" = - ] && continue    # repo didn't ship sums
+        sum=$(sha256sum < "$db/cache/$1.tar.gz")
+        [ "${sum%% *}" = "$3" ] || die "$1: checksum mismatch"
+    done
+    for p in $todo; do inst "$p"; done
+}
+
+del() {
+    for p; do
+        [ -d "$db/installed/$p" ] || die "$p: not installed"
+        for q in "$db"/installed/*; do
+            q=${q##*/}
+            case " $* " in *" $q "*) continue; esac
+            grep -Fxq "$p" "$db/installed/$q/depends" && log "$p" "Needed by $q, removing anyway"
+        done
+    done
+    for p; do
+        sort -r "$db/installed/$p/manifest" | while read -r f; do unlink "$f"; done
+        rm -rf "$db/installed/$p"
+        log "$p" Removed
+    done
+}
+
+upd() {
+    sync
+    stale=
+    for d in "$db"/installed/*; do
+        [ -d "$d" ] || continue
+        set -- $(pkg "${d##*/}")
+        [ "$1" ] && [ "$2" != "$(ver "$1")" ] && stale="$stale $1"
+    done
+    [ "$stale" ] || { log all "Up to date"; return; }
+    want=$stale
+    add $stale
+}
+
+R=/
+[ "$1" = -r ] && { R=$2; shift 2; }
+db=$R/var/db/jits idx=$R/var/db/jits/repo/index
+repo=${JITS_REPO:-$(cat "$R/etc/jits/repo" /etc/jits/repo 2>/dev/null | head -n1)}
+cmd=$1
+[ "$1" ] && shift
+
+case $cmd in
+    a|add)    [ -f "$idx" ] || sync; want=$*; add "$@" ;;
+    r|remove) del "$@" ;;
+    u|update) upd ;;
+    s|search) [ -f "$idx" ] || die "run jits u first"
+              cut -d' ' -f1,2 "$idx" | grep -i -- "${1:-.}" ;;
+    l|list)   for d in "$db"/installed/*; do [ -d "$d" ] || continue; echo "${d##*/} $(cat "$d/version")"; done ;;
+    *) die "usage: jits [-r root] a|r|u|s|l [pkg]..." ;;
+esac
