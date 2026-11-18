@@ -16,6 +16,6 @@ Needs `wget`, `tar` and `sha256sum`. [busybox](https://busybox.net) has all thre
 
 The repo comes from `JITS_REPO`, `<root>/etc/jits/repo` or `/etc/jits/repo`.
 
-Manual: https://yagnilinux.github.io/jits.html
+Manual: https://yagni-linux.codeberg.page/docs.html#jits
 
 CDDL 1.1, see LICENSE.
