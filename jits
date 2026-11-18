@@ -39,7 +39,7 @@ dep() {
 
 # no escaping root
 check() {
-    tar tvzf "$1" | awk '
+    tar tvf "$1" | awk '
         { p = $NF; if ($1 ~ /^l/) for (i = 1; i <= NF; i++) if ($i == "->") p = $(i-1)
           sub(/^\.\//, "", p); sub(/\/$/, "", p); f[p] = 1; if ($1 ~ /^l/) l[p] = 1 }
         END { for (p in f) {
@@ -50,10 +50,11 @@ check() {
 
 inst() {
     set -- "$1" $(pkg "$1")
-    s=$db/stage/$1 tgz=$db/cache/$1.tar.gz
+    s=$db/stage/$1 t=$db/cache/$1.tar
     rm -rf "$s" && mkdir -p "$s" || die "$1: can't stage"
-    check "$tgz" "$1"
-    tar xzf "$tgz" -C "$s" || die "$1: bad archive"
+    lzfse -decode -i "$t.lzfse" -o "$t" || die "$1: bad archive"
+    check "$t" "$1"
+    tar xf "$t" -C "$s" || die "$1: bad archive"
     (cd "$s" && find . ! -type d | sed 's|^\./||' | sort) > "$s.new"
     sort "$db/installed/$1/manifest" > "$s.old" 2>/dev/null
 
@@ -81,7 +82,7 @@ inst() {
     echo "${5:--}" | tr , '\n' | grep -vx - > "$d/depends"
     mv "$s.new" "$d/manifest"
     mv "$s.sums" "$d/etcsums"
-    rm -rf "$s" "$s.old" "$tgz"
+    rm -rf "$s" "$s.old" "$t" "$t.lzfse"
     log "$1" "Installed $3"
 }
 
@@ -104,14 +105,14 @@ add() {
     mkdir -p "$db/cache"
     for p in $todo; do
         set -- $(pkg "$p")
-        get "$1@$2.tar.gz" "$db/cache/$1.tar.gz" &
+        get "$1@$2.tar.lzfse" "$db/cache/$1.tar.lzfse" &
     done
     wait
     for p in $todo; do
         set -- $(pkg "$p")
-        [ -s "$db/cache/$1.tar.gz" ] || die "$1: download failed"
+        [ -s "$db/cache/$1.tar.lzfse" ] || die "$1: download failed"
         [ "$3" = - ] && continue    # repo didn't ship sums
-        sum=$(sha256sum < "$db/cache/$1.tar.gz")
+        sum=$(sha256sum < "$db/cache/$1.tar.lzfse")
         [ "${sum%% *}" = "$3" ] || die "$1: checksum mismatch"
     done
     for p in $todo; do inst "$p"; done
