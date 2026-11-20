@@ -1,6 +1,6 @@
 # cook
 
-The Redemption Linux package manager. POSIX sh.
+The Sidewinder Linux package manager. POSIX sh.
 
 ```
 cook [-r root] [a|r|u|s|l] [pkg]...
@@ -16,6 +16,6 @@ Needs `wget`, `tar` and `sha256sum`. [busybox](https://busybox.net) has all thre
 
 The repo comes from `COOK_REPO`, `<root>/etc/cook/repo` or `/etc/cook/repo`.
 
-Manual: https://redemption-linux.codeberg.page/cook.html
+Manual: https://sidewinder-linux.codeberg.page/cook.html
 
 CDDL 1.1, see LICENSE.
