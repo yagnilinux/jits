@@ -1,9 +1,9 @@
-# cook
+# jits
 
-The Sidewinder Linux package manager. POSIX sh.
+The YAGNI Linux package manager. POSIX sh.
 
 ```
-cook [-r root] [a|r|u|s|l] [pkg]...
+jits [-r root] [a|r|u|s|l] [pkg]...
 
   a  add       Install a package and its dependencies.
   r  remove    Remove a package.
@@ -14,8 +14,8 @@ cook [-r root] [a|r|u|s|l] [pkg]...
 
 Needs `wget`, `tar` and `sha256sum`. [busybox](https://busybox.net) has all three.
 
-The repo comes from `COOK_REPO`, `<root>/etc/cook/repo` or `/etc/cook/repo`.
+The repo comes from `JITS_REPO`, `<root>/etc/jits/repo` or `/etc/jits/repo`.
 
-Manual: https://sidewinder-linux.codeberg.page/cook.html
+Manual: https://yagni-linux.codeberg.page/jits.html
 
 CDDL 1.1, see LICENSE.
