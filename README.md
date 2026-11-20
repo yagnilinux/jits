@@ -1,9 +1,9 @@
-# jits
+# cook
 
-Just install that shit. The YAGNI Linux package manager. POSIX sh.
+The Redemption Linux package manager. POSIX sh.
 
 ```
-jits [-r root] [a|r|u|s|l] [pkg]...
+cook [-r root] [a|r|u|s|l] [pkg]...
 
   a  add       Install a package and its dependencies.
   r  remove    Remove a package.
@@ -14,8 +14,8 @@ jits [-r root] [a|r|u|s|l] [pkg]...
 
 Needs `wget`, `tar` and `sha256sum`. [busybox](https://busybox.net) has all three.
 
-The repo comes from `JITS_REPO`, `<root>/etc/jits/repo` or `/etc/jits/repo`.
+The repo comes from `COOK_REPO`, `<root>/etc/cook/repo` or `/etc/cook/repo`.
 
-Manual: https://yagni-linux.codeberg.page/docs.html#jits
+Manual: https://redemption-linux.codeberg.page/cook.html
 
 CDDL 1.1, see LICENSE.
