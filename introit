@@ -1,14 +1,14 @@
 #!/bin/sh
 # just install that shit
 # repo layout: see docs
-# db:   <root>/var/db/jits/installed/<name>/{version,depends,manifest,etcsums}
+# db:   <root>/var/db/introit/installed/<name>/{version,depends,manifest,etcsums}
 
 log() { printf '\033[1m-> %s\033[m %s\n' "$1" "$2"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 # curl verifies, wget fallback
 get() {
-    [ "$repo" ] || die "no repo (set JITS_REPO or /etc/jits/repo)"
+    [ "$repo" ] || die "no repo (set INTROIT_REPO or /etc/introit/repo)"
     case $repo in
         http*) if command -v curl >/dev/null; then curl -fsSL -o "$2" "$repo/$1"
                else wget -qO "$2" "$repo/$1"; fi ;;
@@ -149,8 +149,8 @@ upd() {
 
 R=/
 [ "$1" = -r ] && { R=$2; shift 2; }
-db=$R/var/db/jits idx=$R/var/db/jits/repo/index
-repo=${JITS_REPO:-$(cat "$R/etc/jits/repo" /etc/jits/repo 2>/dev/null | head -n1)}
+db=$R/var/db/introit idx=$R/var/db/introit/repo/index
+repo=${INTROIT_REPO:-$(cat "$R/etc/introit/repo" /etc/introit/repo 2>/dev/null | head -n1)}
 cmd=$1
 [ "$1" ] && shift
 
@@ -158,8 +158,8 @@ case $cmd in
     a|add)    [ -f "$idx" ] || sync; want=$*; add "$@" ;;
     r|remove) del "$@" ;;
     u|update) upd ;;
-    s|search) [ -f "$idx" ] || die "run jits u first"
+    s|search) [ -f "$idx" ] || die "run introit u first"
               cut -d' ' -f1,2 "$idx" | grep -i -- "${1:-.}" ;;
     l|list)   for d in "$db"/installed/*; do [ -d "$d" ] || continue; echo "${d##*/} $(cat "$d/version")"; done ;;
-    *) die "usage: jits [-r root] a|r|u|s|l [pkg]..." ;;
+    *) die "usage: introit [-r root] a|r|u|s|l [pkg]..." ;;
 esac
