@@ -16,6 +16,9 @@ Needs `wget`, `tar` and `sha256sum`. [busybox](https://busybox.net) has all thre
 
 The repo comes from `INTROIT_REPO`, `<root>/etc/introit/repo` or `/etc/introit/repo`.
 
+Apps (packages marked `app` in the index) install as one folder in `~/apps` (`/apps` as root),
+or `<root>/apps` with `-r`. Removing the folder uninstalls them.
+
 Manual: https://requiem-linux.codeberg.page/introit.html
 
 CDDL 1.1, see LICENSE.
