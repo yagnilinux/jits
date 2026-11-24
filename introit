@@ -170,7 +170,7 @@ case $cmd in
               want=$(echo $n); mkdir -p "$apps"; add $n ;;
     r|remove) del "$@" ;;
     u|update) upd ;;
-    s|search) [ -f "$idx" ] || die "run introit u first"
+    s|search) [ -f "$idx" ] || sync
               cut -d' ' -f1,2 "$idx" | grep -i -- "${1:-.}" ;;
     l|list)   for d in "$db"/installed/*/* "$apps"/*; do [ -f "$d/version" ] || continue; echo "${d#"$db"/installed/} $(cat "$d/version")"; done ;;
     *) die "usage: introit [-r root] a|r|u|s|l [pkg]..." ;;
