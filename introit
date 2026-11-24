@@ -73,7 +73,7 @@ inst() {
         esac
         mv -f "$s/$f" "$R/$f" || die "/$f: can't install"
     done < "$s.new"
-    grep -Fvx -f "$s.new" "$s.old" | while read -r f; do unlink "$f"; done
+    grep -Fvx -f "$s.new" "$s.old" | while read -r f; do unlink "$R/$f"; done
 
     d=$db/installed/$1 && mkdir -p "$d"
     echo "$3" > "$d/version"
@@ -134,7 +134,7 @@ del() {
         [ -d "$apps/${p##*/}" ] && { rm -rf "${apps:?}/${p##*/}"; log "$p" Removed; continue; }
         p=$(res "$p") || exit 1
         [ -d "$db/installed/$p" ] || die "$p: not installed"
-        sort -r "$db/installed/$p/manifest" | while read -r f; do unlink "$f"; done
+        sort -r "$db/installed/$p/manifest" | while read -r f; do unlink "$R/$f"; done
         rm -rf "$db/installed/$p"
         log "$p" Removed
     done
@@ -155,7 +155,7 @@ upd() {
 }
 
 R=/
-[ "$1" = -r ] && { R=$2; shift 2; }
+[ "$1" = -r ] && { R=$(cd "$2" && pwd) || exit; shift 2; }
 db=$R/var/db/introit idx=$R/var/db/introit/repo/index sysdb=$R/var/db/introit
 # root installs for everyone in /apps
 if [ "$R" != / ]; then apps=$R/apps; elif [ "$(id -u)" = 0 ]; then apps=${INTROIT_APPS:-/apps}; else apps=${INTROIT_APPS:-$HOME/apps}; fi
