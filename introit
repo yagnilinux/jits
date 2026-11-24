@@ -1,7 +1,8 @@
 #!/bin/sh
 # just install that shit
 # repo layout: see docs
-# db:   <root>/var/db/introit/installed/<name>/{version,depends,manifest,etcsums}
+# names: <category>/<name>, or just <name> when that's unique
+# db:   <root>/var/db/introit/installed/<category>/<name>/{version,depends,manifest,etcsums}
 # apps: one folder each in ~/apps (or <root>/apps). the folder is the install
 
 log() { printf '\033[1m-> %s\033[m %s\n' "$1" "$2"; }
@@ -24,7 +25,14 @@ sync() {
 }
 
 pkg() { grep "^$1 " "$idx"; }
-ver() { cat "$sysdb/installed/$1/version" "$apps/$1/version" 2>/dev/null | head -n1; }
+res() {
+    case $1 in */*) echo "$1"; return; esac
+    m=$(cut -d' ' -f1 "$idx" | grep "/$1$")
+    case $m in '') die "$1: not in repo" ;; *"
+"*) die "$1: which one?" $m ;; esac
+    echo "$m"
+}
+ver() { cat "$sysdb/installed/$1/version" "$apps/${1##*/}/version" 2>/dev/null | head -n1; }
 isapp() { [ "$(pkg "$1" | cut -d' ' -f5)" = app ]; }
 
 # deps first
@@ -39,30 +47,18 @@ dep() {
     order="$order $1"
 }
 
-# no escaping root
-check() {
-    tar tvf "$1" | awk '
-        { p = $NF; if ($1 ~ /^l/) for (i = 1; i <= NF; i++) if ($i == "->") p = $(i-1)
-          sub(/^\.\//, "", p); sub(/\/$/, "", p); f[p] = 1; if ($1 ~ /^l/) l[p] = 1 }
-        END { for (p in f) {
-                if (p ~ /^\// || p ~ /(^|\/)\.\.(\/|$)/) exit 1
-                for (s in l) if (index(p, s "/") == 1) exit 1 } }' ||
-        die "$2: unsafe path in package"
-}
-
 inst() {
     set -- "$1" $(pkg "$1")
-    s=$db/stage/$1 t=$db/cache/$1.tar
+    s=$db/stage/${1##*/} t=$db/cache/${1##*/}.tar
     rm -rf "$s" && mkdir -p "$s" || die "$1: can't stage"
     lzfse -decode -i "$t.lzfse" -o "$t" || die "$1: bad archive"
-    check "$t" "$1"
     tar xf "$t" -C "$s" || die "$1: bad archive"
     (cd "$s" && find . ! -type d | sed 's|^\./||' | sort) > "$s.new"
     sort "$db/installed/$1/manifest" > "$s.old" 2>/dev/null
 
     while read -r f; do
-        o=$(grep -Fxl "$f" "$db"/installed/*/manifest 2>/dev/null | grep -v "/$1/manifest")
-        [ "$o" ] && { o=${o%/manifest}; die "/$f is owned by ${o##*/}"; }
+        o=$(grep -Fxl "$f" "$db"/installed/*/*/manifest 2>/dev/null | grep -v "/$1/manifest")
+        [ "$o" ] && { o=${o%/manifest}; die "/$f is owned by ${o#"$db"/installed/}"; }
         [ -e "$R/$f" ] || [ -h "$R/$f" ] || continue
         grep -Fxq "$f" "$s.old" || die "/$f already exists"
     done < "$s.new"
@@ -111,14 +107,14 @@ add() {
     mkdir -p "$db/cache"
     for p in $todo; do
         set -- $(pkg "$p")
-        get "$1@$2.tar.lzfse" "$db/cache/$1.tar.lzfse" &
+        get "$(echo "$1" | tr / .)@$2.tar.lzfse" "$db/cache/${1##*/}.tar.lzfse" &
     done
     wait
     for p in $todo; do
         set -- $(pkg "$p")
-        [ -s "$db/cache/$1.tar.lzfse" ] || die "$1: download failed"
+        [ -s "$db/cache/${1##*/}.tar.lzfse" ] || die "$1: download failed"
         [ "$3" = - ] && continue    # repo didn't ship sums
-        sum=$(sha256sum < "$db/cache/$1.tar.lzfse")
+        sum=$(sha256sum < "$db/cache/${1##*/}.tar.lzfse")
         [ "${sum%% *}" = "$3" ] || die "$1: checksum mismatch"
     done
     for p in $todo; do if isapp "$p"; then app "$p"; else inst "$p"; fi; done
@@ -126,27 +122,18 @@ add() {
 
 # an app is one folder. replace it whole
 app() {
-    t=$db/cache/$1.tar s=$apps/.$1.new
+    b=${1##*/} t=$db/cache/${1##*/}.tar s=$apps/.${1##*/}.new
     lzfse -decode -i "$t.lzfse" -o "$t" || die "$1: bad archive"
-    check "$t" "$1"
     rm -rf "$s" && mkdir -p "$s" && tar xf "$t" -C "$s" || die "$1: bad archive"
-    [ -d "$s/$1" ] || die "$1: not an app"
-    rm -rf "${apps:?}/$1" && mv "$s/$1" "$apps/$1" && rm -rf "$s" "$t" "$t.lzfse"
-    log "$1" "Installed $(cat "$apps/$1/version") in $apps"
+    rm -rf "${apps:?}/$b" && mv "$s/$b" "$apps/$b" && rm -rf "$s" "$t" "$t.lzfse"
+    log "$1" "Installed $(cat "$apps/$b/version") in $apps"
 }
 
 del() {
     for p; do
-        [ -d "$apps/$p" ] && continue
+        [ -d "$apps/${p##*/}" ] && { rm -rf "${apps:?}/${p##*/}"; log "$p" Removed; continue; }
+        p=$(res "$p") || exit 1
         [ -d "$db/installed/$p" ] || die "$p: not installed"
-        for q in "$db"/installed/*; do
-            q=${q##*/}
-            case " $* " in *" $q "*) continue; esac
-            grep -Fxq "$p" "$db/installed/$q/depends" && log "$p" "Needed by $q, removing anyway"
-        done
-    done
-    for p; do
-        [ -d "$apps/$p" ] && { rm -rf "${apps:?}/$p"; log "$p" Removed; continue; }
         sort -r "$db/installed/$p/manifest" | while read -r f; do unlink "$f"; done
         rm -rf "$db/installed/$p"
         log "$p" Removed
@@ -156,9 +143,10 @@ del() {
 upd() {
     sync
     stale=
-    for d in "$db"/installed/* "$apps"/*; do
+    for d in "$db"/installed/*/* "$apps"/*; do
         [ -d "$d" ] || continue
-        set -- $(pkg "${d##*/}")
+        case $d in "$db"/*) n=${d#"$db"/installed/} ;; *) n=$(cut -d' ' -f1 "$idx" | grep "/${d##*/}$") ;; esac
+        set -- $(pkg "$n")
         [ "$1" ] && [ "$2" != "$(ver "$1")" ] && stale="$stale $1"
     done
     [ "$stale" ] || { log all "Up to date"; return; }
@@ -178,11 +166,12 @@ cmd=$1
 [ "$1" ] && shift
 
 case $cmd in
-    a|add)    [ -f "$idx" ] || sync; want=$*; mkdir -p "$apps"; add "$@" ;;
+    a|add)    [ -f "$idx" ] || sync; n=$(for p; do res "$p" || exit 1; done) || exit 1
+              want=$(echo $n); mkdir -p "$apps"; add $n ;;
     r|remove) del "$@" ;;
     u|update) upd ;;
     s|search) [ -f "$idx" ] || die "run introit u first"
               cut -d' ' -f1,2 "$idx" | grep -i -- "${1:-.}" ;;
-    l|list)   for d in "$db"/installed/* "$apps"/*; do [ -f "$d/version" ] || continue; echo "${d##*/} $(cat "$d/version")"; done ;;
+    l|list)   for d in "$db"/installed/*/* "$apps"/*; do [ -f "$d/version" ] || continue; echo "${d#"$db"/installed/} $(cat "$d/version")"; done ;;
     *) die "usage: introit [-r root] a|r|u|s|l [pkg]..." ;;
 esac
