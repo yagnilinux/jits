@@ -2,18 +2,18 @@
 # just install that shit
 # repo layout: see docs
 # names: <category>/<name>, or just <name> when that's unique
-# db:   <root>/var/db/snares/installed/<category>/<name>/{version,depends,manifest,etcsums,feathers}
+# db:   <root>/var/db/rag/installed/<category>/<name>/{version,depends,manifest,etcsums,fuel}
 # apps: one folder each in ~/apps (or <root>/apps). the folder is the install
-# eggs: the rookery, synced to <db>/rookery. feathers: what an egg can be built with
-# crest: /etc/snares/crest. what you want: feathers, holds, sums, @latest
-# prebuilt when your crest matches the egg's defaults, built from source when not
+# bottles: the crate, synced to <db>/crate. fuel: what a bottle can be built with
+# mix: /etc/rag/mix. what you want: fuel, holds, sums, @latest
+# prebuilt when your mix matches the bottle's defaults, built from source when not
 
 log() { printf '\033[1m-> %s\033[m %s\n' "$1" "$2"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 # curl verifies, wget fallback
 get() {
-    [ "$repo" ] || die "no repo (set SNARES_REPO or /etc/snares/repo)"
+    [ "$repo" ] || die "no repo (set RAG_REPO or /etc/rag/repo)"
     case $repo in
         http*) if command -v curl >/dev/null; then curl -fsSL -o "$2" "$repo/$1"
                else wget -qO "$2" "$repo/$1"; fi ;;
@@ -24,9 +24,9 @@ get() {
 sync() {
     mkdir -p "$db/repo" && get index "$idx.tmp" && mv "$idx.tmp" "$idx" ||
         die "can't fetch $repo/index"
-    if get rookery.tar.lzfse "$db/rookery.tar.lzfse" 2>/dev/null; then
-        rm -rf "$db/rookery" && mkdir -p "$db/rookery" &&
-            lzfse -decode -i "$db/rookery.tar.lzfse" | tar xf - -C "$db/rookery" && rm -f "$db/rookery.tar.lzfse"
+    if get crate.tar.lzfse "$db/crate.tar.lzfse" 2>/dev/null; then
+        rm -rf "$db/crate" && mkdir -p "$db/crate" &&
+            lzfse -decode -i "$db/crate.tar.lzfse" | tar xf - -C "$db/crate" && rm -f "$db/crate.tar.lzfse"
     fi
     log repo Synced
 }
@@ -42,48 +42,48 @@ res() {
 ver() { cat "$sysdb/installed/$1/version" "$apps/${1##*/}/version" 2>/dev/null | head -n1; }
 isapp() { [ "$(pkg "$1" | cut -d' ' -f5)" = app ]; }
 
-# the crest line for a package, then the * line
-crest() { grep -E "^($(echo "$1" | sed 's/[.]/[.]/g')|[*])[[:space:]]" "$R/etc/snares/crest" 2>/dev/null | sort | cut -d' ' -f2- | tr -s ' \t' '\n\n' | sed 's/#.*//;/^$/d'; }
-# feathers an egg ends up with, sorted, one line. _names: sh has no locals and inst uses t
-feathers() {
-    _f=$db/rookery/$1/feathers
+# the mix line for a package, then the * line
+mix() { grep -E "^($(echo "$1" | sed 's/[.]/[.]/g')|[*])[[:space:]]" "$R/etc/rag/mix" 2>/dev/null | sort | cut -d' ' -f2- | tr -s ' \t' '\n\n' | sed 's/#.*//;/^$/d'; }
+# fuel a bottle ends up with, sorted, one line. _names: sh has no locals and inst uses t
+fuel() {
+    _f=$db/crate/$1/fuel
     [ -f "$_f" ] || return 0
     _on=$(sed -n 's/^+\([a-z0-9_]*\).*/\1/p' "$_f")
-    for _t in $(crest "$1"); do
+    for _t in $(mix "$1"); do
         case $_t in [+-]*) awk '{print substr($1, 2)}' "$_f" | grep -qx "${_t#?}" || continue ;; *) continue ;; esac
         _on=$(echo "$_on" | grep -vx "${_t#?}"); [ "${_t%"${_t#?}"}" = + ] && _on="$_on
 ${_t#?}"
     done
     echo $(echo "$_on" | sed '/^$/d' | sort -u)
 }
-defaults() { [ -f "$db/rookery/$1/feathers" ] && echo $(sed -n 's/^+\([a-z0-9_]*\).*/\1/p' "$db/rookery/$1/feathers" | sort -u); }
-had() { cat "$db/installed/$1/feathers" "$apps/${1##*/}/feathers" 2>/dev/null | head -n1; }
-latest() { crest "$1" | grep -qx @latest; }
-# needs building: feathers off the defaults, @latest, or snares b
-frombuild() { [ "$(feathers "$1")" != "$(defaults "$1")" ] || latest "$1" || case " $force " in *" $1 "*) true ;; *) false ;; esac; }
+defaults() { [ -f "$db/crate/$1/fuel" ] && echo $(sed -n 's/^+\([a-z0-9_]*\).*/\1/p' "$db/crate/$1/fuel" | sort -u); }
+had() { cat "$db/installed/$1/fuel" "$apps/${1##*/}/fuel" 2>/dev/null | head -n1; }
+latest() { mix "$1" | grep -qx @latest; }
+# needs building: fuel off the defaults, @latest, or rag b
+frombuild() { [ "$(fuel "$1")" != "$(defaults "$1")" ] || latest "$1" || case " $force " in *" $1 "*) true ;; *) false ;; esac; }
 
-# build an egg into the cache, as if it was downloaded
+# build a bottle into the cache, as if it was downloaded
 build() {
     set -- "$1" $(pkg "$1")
-    e=$db/rookery/$1 b=${1##*/} w=$db/build/${1##*/}
-    [ -d "$e" ] || die "$1: no egg, run snares u"
-    [ -f "$e/binonly" ] && die "$1: only comes prebuilt. take the feathers out of your crest"
+    e=$db/crate/$1 b=${1##*/} w=$db/build/${1##*/}
+    [ -d "$e" ] || die "$1: no bottle, run rag u"
+    [ -f "$e/binonly" ] && die "$1: only comes prebuilt. take the fuel out of your mix"
     command -v musl-cc >/dev/null || die "$1: building needs a compiler (musl-cc), and none is installed"
     rm -rf "$w" && mkdir -p "$w/out" && chmod 755 "$w/out" || die "$1: can't make $w"
     if latest "$1"; then
         read -r kind url _ < "$e/source"
-        [ "$kind" = git ] || die "$1: @latest needs a git egg"
+        [ "$kind" = git ] || die "$1: @latest needs a git bottle"
         git clone -q --depth 1 "$url" "$w/src" || die "$1: can't clone $url"
     elif [ -f "$e/source" ]; then
         get "src.$(echo "$1" | tr / .)@$3.tar.lzfse" "$w/src.tar.lzfse" || die "$1: can't fetch the source"
-        s=$(crest "$1" | sed -n 's/^sha256://p')
-        [ -z "$s" ] || [ "$(sha256sum < "$w/src.tar.lzfse" | cut -d' ' -f1)" = "$s" ] || die "$1: source doesn't match your crest's sha256"
+        s=$(mix "$1" | sed -n 's/^sha256://p')
+        [ -z "$s" ] || [ "$(sha256sum < "$w/src.tar.lzfse" | cut -d' ' -f1)" = "$s" ] || die "$1: source doesn't match your mix's sha256"
         mkdir -p "$w/src" && lzfse -decode -i "$w/src.tar.lzfse" | tar xf - -C "$w/src" || die "$1: bad source"
     else
         cp -a "$e" "$w/src"
     fi
-    fl=; for x in $(feathers "$1"); do fl="$fl F_$x=1"; done
-    log "$1" "Building with:${fl:- no feathers}"
+    fl=; for x in $(fuel "$1"); do fl="$fl F_$x=1"; done
+    log "$1" "Building with:${fl:- no fuel}"
     (cd "$w/src" && env $fl PKG="$e" ROOT="$db" sh -e "$e/build" "$w/out") || die "$1: build failed, see $w"
     (cd "$w/out" && for s in usr/bin usr/sbin sbin; do [ -d "$s" ] && mkdir -p bin && cp -a "$s/." bin/ && rm -rf "$s"; done
         [ -d usr/share ] && mkdir -p share && cp -a usr/share/. share/ && rm -rf usr/share; rmdir usr 2>/dev/null; :)
@@ -138,7 +138,7 @@ inst() {
     echo "${5:--}" | tr , '\n' | grep -vx - > "$d/depends"
     mv "$s.new" "$d/manifest"
     mv "$s.sums" "$d/etcsums"
-    feathers "$1" > "$d/feathers"
+    fuel "$1" > "$d/fuel"
     latest "$1" && echo "$3+latest" > "$d/version"
     rm -rf "$s" "$s.old" "$t" "$t.lzfse"
     log "$1" "Installed $3"
@@ -152,7 +152,7 @@ add() {
     for p; do dep "$p"; done
     for p in $order; do
         set -- $(pkg "$p")
-        if [ "$(ver "$p")" = "$2" ] && [ "$(had "$p")" = "$(feathers "$p")" ] && ! latest "$p" &&
+        if [ "$(ver "$p")" = "$2" ] && [ "$(had "$p")" = "$(fuel "$p")" ] && ! latest "$p" &&
             case " $force " in *" $p "*) false ;; *) true ;; esac; then
             case " $want " in *" $p "*) log "$p" "Already installed ($2)"; esac
         else
@@ -162,7 +162,7 @@ add() {
     [ "$todo" ] || return 0
     if [ "$R" = / ] && [ "$(id -u)" != 0 ]; then
         sys=; for p in $todo; do isapp "$p" || sys="$sys $p"; done
-        [ "$sys" ] && die "needs root first: doas snares a$sys"
+        [ "$sys" ] && die "needs root first: doas rag a$sys"
     fi
 
     mkdir -p "$db/cache"
@@ -190,7 +190,7 @@ app() {
     lzfse -decode -i "$t.lzfse" -o "$t" || die "$1: bad archive"
     rm -rf "$s" && mkdir -p "$s" && tar xf "$t" -C "$s" || die "$1: bad archive"
     rm -rf "${apps:?}/$b" && mv "$s/$b" "$apps/$b" && rm -rf "$s" "$t" "$t.lzfse"
-    feathers "$1" > "$apps/$b/feathers"
+    fuel "$1" > "$apps/$b/fuel"
     log "$1" "Installed $(cat "$apps/$b/version") in $apps"
 }
 
@@ -213,8 +213,8 @@ upd() {
         case $d in "$db"/*) n=${d#"$db"/installed/} ;; *) n=$(cut -d' ' -f1 "$idx" | grep "/${d##*/}$") ;; esac
         set -- $(pkg "$n")
         [ "$1" ] || continue
-        crest "$1" | grep -qx "=$(ver "$1")" && continue     # held
-        { [ "$2" != "$(ver "$1")" ] || [ "$(had "$1")" != "$(feathers "$1")" ]; } && stale="$stale $1"
+        mix "$1" | grep -qx "=$(ver "$1")" && continue     # held
+        { [ "$2" != "$(ver "$1")" ] || [ "$(had "$1")" != "$(fuel "$1")" ]; } && stale="$stale $1"
     done
     [ "$stale" ] || { log all "Up to date"; return; }
     want=$stale
@@ -223,12 +223,12 @@ upd() {
 
 R=/
 [ "$1" = -r ] && { R=$(cd "$2" && pwd) || exit; shift 2; }
-db=$R/var/db/snares idx=$R/var/db/snares/repo/index sysdb=$R/var/db/snares
+db=$R/var/db/rag idx=$R/var/db/rag/repo/index sysdb=$R/var/db/rag
 # root installs for everyone in /apps
-if [ "$R" != / ]; then apps=$R/apps; elif [ "$(id -u)" = 0 ]; then apps=${SNARES_APPS:-/apps}; else apps=${SNARES_APPS:-$HOME/apps}; fi
+if [ "$R" != / ]; then apps=$R/apps; elif [ "$(id -u)" = 0 ]; then apps=${RAG_APPS:-/apps}; else apps=${RAG_APPS:-$HOME/apps}; fi
 # users install apps without root: keep the index and cache in home
-[ "$R" = / ] && [ ! -w "$db" ] && [ ! -w "${db%/*}" ] && db=${XDG_CACHE_HOME:-$HOME/.cache}/snares idx=$db/repo/index
-repo=${SNARES_REPO:-$(cat "$R/etc/snares/repo" /etc/snares/repo 2>/dev/null | head -n1)}
+[ "$R" = / ] && [ ! -w "$db" ] && [ ! -w "${db%/*}" ] && db=${XDG_CACHE_HOME:-$HOME/.cache}/rag idx=$db/repo/index
+repo=${RAG_REPO:-$(cat "$R/etc/rag/repo" /etc/rag/repo 2>/dev/null | head -n1)}
 cmd=$1
 [ "$1" ] && shift
 
@@ -239,13 +239,13 @@ case $cmd in
     u|update) upd ;;
     b|build)  [ -f "$idx" ] || sync; n=$(for p; do res "$p" || exit 1; done) || exit 1
               want=$(echo $n) force=$want; mkdir -p "$apps"; add $n ;;
-    f|feathers) p=$(res "$1") || exit 1; f=$db/rookery/$p/feathers
-              [ -f "$f" ] || { echo "$p has no feathers"; exit 0; }
-              on=" $(feathers "$p") "
+    f|fuel) p=$(res "$1") || exit 1; f=$db/crate/$p/fuel
+              [ -f "$f" ] || { echo "$p has no fuel"; exit 0; }
+              on=" $(fuel "$p") "
               while read -r l; do x=${l%% *} x=${x#?}; case $on in *" $x "*) m=+ ;; *) m=- ;; esac
                   printf '%s%-12s %s\n' "$m" "$x" "$(echo "${l#* }" | sed 's/^ *//')"; done < "$f" ;;
     s|search) [ -f "$idx" ] || sync
               cut -d' ' -f1,2 "$idx" | grep -i -- "${1:-.}" ;;
     l|list)   for d in "$db"/installed/*/* "$apps"/*; do [ -f "$d/version" ] || continue; echo "${d#"$db"/installed/} $(cat "$d/version")"; done ;;
-    *) die "usage: snares [-r root] a|b|r|u|s|l|f [pkg]..." ;;
+    *) die "usage: rag [-r root] a|b|r|u|s|l|f [pkg]..." ;;
 esac
