@@ -2,7 +2,7 @@
 # just install that shit
 # repo layout: see docs
 # names: <category>/<name>, or just <name> when that's unique
-# db:   <root>/var/db/introit/installed/<category>/<name>/{version,depends,manifest,etcsums}
+# db:   <root>/var/db/snares/installed/<category>/<name>/{version,depends,manifest,etcsums}
 # apps: one folder each in ~/apps (or <root>/apps). the folder is the install
 
 log() { printf '\033[1m-> %s\033[m %s\n' "$1" "$2"; }
@@ -10,7 +10,7 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 # curl verifies, wget fallback
 get() {
-    [ "$repo" ] || die "no repo (set INTROIT_REPO or /etc/introit/repo)"
+    [ "$repo" ] || die "no repo (set SNARES_REPO or /etc/snares/repo)"
     case $repo in
         http*) if command -v curl >/dev/null; then curl -fsSL -o "$2" "$repo/$1"
                else wget -qO "$2" "$repo/$1"; fi ;;
@@ -101,7 +101,7 @@ add() {
     [ "$todo" ] || return 0
     if [ "$R" = / ] && [ "$(id -u)" != 0 ]; then
         sys=; for p in $todo; do isapp "$p" || sys="$sys $p"; done
-        [ "$sys" ] && die "needs root first: doas introit a$sys"
+        [ "$sys" ] && die "needs root first: doas snares a$sys"
     fi
 
     mkdir -p "$db/cache"
@@ -156,12 +156,12 @@ upd() {
 
 R=/
 [ "$1" = -r ] && { R=$(cd "$2" && pwd) || exit; shift 2; }
-db=$R/var/db/introit idx=$R/var/db/introit/repo/index sysdb=$R/var/db/introit
+db=$R/var/db/snares idx=$R/var/db/snares/repo/index sysdb=$R/var/db/snares
 # root installs for everyone in /apps
-if [ "$R" != / ]; then apps=$R/apps; elif [ "$(id -u)" = 0 ]; then apps=${INTROIT_APPS:-/apps}; else apps=${INTROIT_APPS:-$HOME/apps}; fi
+if [ "$R" != / ]; then apps=$R/apps; elif [ "$(id -u)" = 0 ]; then apps=${SNARES_APPS:-/apps}; else apps=${SNARES_APPS:-$HOME/apps}; fi
 # users install apps without root: keep the index and cache in home
-[ "$R" = / ] && [ ! -w "$db" ] && [ ! -w "${db%/*}" ] && db=${XDG_CACHE_HOME:-$HOME/.cache}/introit idx=$db/repo/index
-repo=${INTROIT_REPO:-$(cat "$R/etc/introit/repo" /etc/introit/repo 2>/dev/null | head -n1)}
+[ "$R" = / ] && [ ! -w "$db" ] && [ ! -w "${db%/*}" ] && db=${XDG_CACHE_HOME:-$HOME/.cache}/snares idx=$db/repo/index
+repo=${SNARES_REPO:-$(cat "$R/etc/snares/repo" /etc/snares/repo 2>/dev/null | head -n1)}
 cmd=$1
 [ "$1" ] && shift
 
@@ -173,5 +173,5 @@ case $cmd in
     s|search) [ -f "$idx" ] || sync
               cut -d' ' -f1,2 "$idx" | grep -i -- "${1:-.}" ;;
     l|list)   for d in "$db"/installed/*/* "$apps"/*; do [ -f "$d/version" ] || continue; echo "${d#"$db"/installed/} $(cat "$d/version")"; done ;;
-    *) die "usage: introit [-r root] a|r|u|s|l [pkg]..." ;;
+    *) die "usage: snares [-r root] a|r|u|s|l [pkg]..." ;;
 esac

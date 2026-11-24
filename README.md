@@ -1,9 +1,9 @@
-# introit
+# snares
 
 The YAGNI Linux package manager. POSIX sh.
 
 ```
-introit [-r root] [a|r|u|s|l] [pkg]...
+snares [-r root] [a|r|u|s|l] [pkg]...
 
   a  add       Install a package and its dependencies.
   r  remove    Remove a package.
@@ -14,11 +14,11 @@ introit [-r root] [a|r|u|s|l] [pkg]...
 
 Needs `wget`, `tar` and `sha256sum`. [busybox](https://busybox.net) has all three.
 
-The repo comes from `INTROIT_REPO`, `<root>/etc/introit/repo` or `/etc/introit/repo`.
+The repo comes from `SNARES_REPO`, `<root>/etc/snares/repo` or `/etc/snares/repo`.
 
 Apps (packages marked `app` in the index) install as one folder in `~/apps` (`/apps` as root),
 or `<root>/apps` with `-r`. Removing the folder uninstalls them.
 
-Manual: https://requiem-linux.codeberg.page/introit.html
+Manual: https://fiordland-linux.codeberg.page/snares.html
 
 CDDL 1.1, see LICENSE.
